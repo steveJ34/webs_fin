@@ -1,0 +1,337 @@
+---
+title: "Webscraping Final Assignment"
+author: "Istvan Janco"
+date: "12/20/2021"
+output: 
+  html_document:
+    theme: "lumen"
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    #  collapsed: false
+    #  smooth_scroll: false
+    #code_folding: hide
+    code_download: yes
+---
+
+# Overview
+
+The aim of this project is to scrape data on USA- based basketball teams from basketballreference.com and conduct a quick analysis on teams stats. 
+
+# Getting and Manipulating the Data
+
+Calling the packages. 
+
+```{r setup, warning = FALSE, message = FALSE}
+# load packages 
+library(rvest)
+library(data.table)
+library(xml2)
+library(kableExtra)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(stringr)
+```
+
+In the first part, we get the data for all the male teams, including  the team name, league, years of activity, games played, total wins, total losses, win/lose ratio, number of trips to the playoffs, number of division wins, number of conference wins and number of champioships. All the variables are in numeric format except for the team name and league. 
+
+```{r create links, warning = FALSE, message = FALSE}
+
+# define the url 
+url <- "https://www.basketball-reference.com/teams/"
+
+t <- read_html(url)
+
+# create data list 
+data_list <- list()
+
+# get teams statistics 
+data_list[["stats"]]<- t %>% 
+  html_nodes("td") %>% 
+  html_text()
+
+# convert the list to a df
+df <- as.data.frame(data_list)
+
+# transposing the df and name the columns 
+df_stats <- as.data.frame(matrix(df$stats, ncol=12, byrow=TRUE))
+names(df_stats) <- c("league", "from", "to", "yrs", "games", "wins", "losses", 
+                    "win/lose%",  "playoffs", "division_wins", "conference_wins", 
+                    "championships")
+
+# replace all the empty cells with 0 
+df_stats <- as.data.frame(sapply(df_stats , gsub , pattern = "^\\s*$" , replacement = 0 )) 
+
+# get team names
+data_list1 <- list()
+
+data_list1[["name"]]<- t %>% 
+  html_nodes("th") %>% 
+  html_text()
+
+# create a list 
+df1 <- as.data.frame(data_list1)
+
+# delete the column names from the retrieved data 
+df_names <- data.frame(df1[!(df1$name=="Franchise" | df1$name=="Lg" | df1$name=="From" | df1$name=="Yrs"
+         | df1$name=="To" | df1$name=="G" | df1$name=="W" | df1$name=="L"| df1$name=="W/L%"
+         | df1$name=="Plyfs" | df1$name=="Div" | df1$name=="Conf" | df1$name=="Champ") , ])
+
+#rename the column 
+df_names <- df_names %>%
+  transmute(teams = df_names$df1...df1.name.....Franchise....df1.name.....Lg....df1.name....)
+
+
+# bind the sats and the team names 
+df_fin <- cbind(df_names, df_stats)
+
+# quick cleanup on final df 
+df_nba <- df_fin %>% mutate(yrs = as.numeric(yrs), 
+                            games = as.numeric(games), 
+                            wins = as.numeric(wins),
+                            losses = as.numeric(losses),
+                            `win/lose%` = as.numeric(`win/lose%`),
+                            playoffs = as.numeric(playoffs),
+                            division_wins = as.numeric(division_wins), 
+                            conference_wins = as.numeric(conference_wins), 
+                            championships = as.numeric(championships))
+```  
+
+# Creating a Function
+
+After getting the data for the male-leagues, we use the same logic, we create a function to get the same data for WNBA. 
+
+```{r get wnba data, warning = FALSE, message = FALSE}
+
+# creating a function to scrape the same data but for WNBA teams
+
+get_wnba <- function(url) {
+  
+  t <- read_html(url)
+  
+  # create data list 
+  data_list <- list()
+  
+  # get teams statistics 
+  data_list[["stats"]]<- t %>% 
+    html_nodes("td") %>% 
+    html_text()
+  
+  df <- as.data.frame(data_list)
+  
+  df_stats <- as.data.frame(matrix(df$stats, ncol=11, byrow=TRUE))
+  names(df_stats) <- c("from", "to", "yrs", "games", "wins", "losses", 
+                       "win/lose%",  "playoffs", "division_wins", "conference_wins", 
+                       "championships") # note that, since the wnba table structure is different, we don't use the league column here and we need to adjust the ncol to 11, instead of 12 
+  
+  df_stats <- as.data.frame(sapply(df_stats , gsub , pattern = "^\\s*$" , replacement = 0 )) 
+  
+  # get team names
+  data_list1 <- list()
+  
+  data_list1[["name"]]<- t %>% 
+    html_nodes("th") %>% 
+    html_text()
+  
+  df1 <- as.data.frame(data_list1)
+  
+  
+  df_names<-data.frame(df1[!(df1$name=="Team" | df1$name=="From" | df1$name=="To" | df1$name=="Yrs"
+                             | df1$name=="G" | df1$name=="W" | df1$name=="L"| df1$name=="W/L%"
+                             | df1$name=="Plyfs" | df1$name=="Div" | df1$name=="Conf" | df1$name=="Champ") , ])
+  
+  df_names <- df_names %>% 
+    transmute(teams = df_names$df1...df1.name.....Team....df1.name.....From....df1.name.....To....) # in addition, the cleanup sequence for team names should be adjusted
+  
+  
+  # final df 
+  df_out <- cbind(df_names, df_stats)
+  
+  # quick cleanup on final df 
+  
+  df_out <- add_column(df_out, league = "WNBA", .after = "teams")
+  
+  df_out <- df_out %>% mutate(league = as.factor(league),
+                              yrs = as.numeric(yrs), 
+                              games = as.numeric(games), 
+                              wins = as.numeric(wins),
+                              losses = as.numeric(losses),
+                              `win/lose%` = as.numeric(`win/lose%`),
+                              playoffs = as.numeric(playoffs),
+                              division_wins = as.numeric(division_wins), 
+                              conference_wins = as.numeric(conference_wins), 
+                              championships = as.numeric(championships))
+  
+  return(df_out) 
+}
+
+
+# using the function 
+
+url1 <- "https://www.basketball-reference.com/wnba/teams/"
+
+df_wnba <- get_wnba(url1)
+
+```  
+
+Once, we use the newly created function, we finalize the data by binding the NBA, ABA, BAA and WNBA data together
+
+```{r get final data, warning = FALSE, message = FALSE}
+
+# combine the 2 data sets 
+
+df_all <- rbind(df_nba, df_wnba)
+
+```  
+
+# Preliminary Data Analysis 
+
+Let's see the structure of the data. 
+
+```{r structure, warning = FALSE, message = FALSE}
+
+lapply(df_all, summary) # include quick description on stats below
+
+```  
+
+In addition, let's also check, how many observations we have in each league. 
+
+```{r league check, warning = FALSE, message = FALSE}
+
+# see how many observations we have for each league 
+df_leagues <- df_all %>% 
+  count(league) %>% 
+  group_by(league)
+
+df_leagues
+# drop leagus, where there are less than 5 observations 
+
+```  
+
+It looks like there are less than 5 observations in both ABA and BAA category, which is not enough to make meaningful conclusions, thus we drop the BAA and ABA leagues from the data. 
+
+```{r drop leagues, warning = FALSE, message = FALSE}
+
+# looks like there aren't enough observations in the BAA category alone, might be due to some franchises starting out in BAA and not transferring to NBA. Since the number of observations is too low to yield any useful results, we are going to drop them 
+
+df_all <- df_all %>% 
+  filter(league != "BAA",
+         league != "ABA")
+
+
+
+```  
+
+Once, the data is ready, we can create some visuals, to get more familiar with the data. 
+
+# Plot 1: Win/Lose Ratio vs. League 
+
+Let's see if there is an association between the success of a given team (higher win/lose%) and its league. In other words we are interested if it is easier to be successful in any basketball league. 
+
+```{r plot 1, warning = FALSE, message = FALSE}
+
+# Plot 1 
+
+# is it easier to be successfull in any particular league? 
+
+plot1_data <-  aggregate(`win/lose%` ~ league, df_all, mean)
+
+ggplot(plot1_data, aes(league,`win/lose%`, fill = league)) + 
+  geom_col()
+
+```  
+
+The above plot suggests that there were more successful teams in the BAA league (later became part of the NBA), however, we also need to consider the fact that teams which existed in BAA, have existed longer and played more games, thus there is a probability that such teams are more successful due to longevity. 
+
+
+# Plot 2: Longevity vs. Win/Lose Ratio 
+
+Based on our previous findings, let's examine the association between longevity and win/lose %. He we are intersted in whether more playing years increase the probability of getting a championship. 
+
+```{r plot 4, warning = FALSE, message = FALSE}
+
+# Plot 2 
+# longevity vs. success
+ggplot(df_all,aes(`win/lose%`, yrs)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~ league) +
+  labs(y="Years Played", x="Win/Lose Ratio", title="Years vs. Success")
+
+```  
+
+It looks like, there are some significant differences in the association between longevity and win/lose % from league to league. The plot suggests, that in some cases (NBA/ABA and NBA/BAA) the association is flat or slightly negative, suggesting, that number of years played has no effect on success or can actually can have a negative effect. On the other hand, in the NBA and WBA, it looks like the association is actually positive. In orger to explain the league-based differences, we would need to take a look at some omitted variables. 
+
+# Plot 3: Teams with Most championships in NBA and WNBA 
+
+Next, let's take a look at the teams with most championships. Since, we have the most observations in NBA and WNBA leagues, we compare the two. 
+
+```{r plot 2, warning = FALSE, message = FALSE}
+
+# Plot 3 
+# which are the teams with most championships in different leagues 
+# let's see the franchises with most wins in the NBA and WNBA
+
+plot2_data <- df_all %>%
+  filter(league != "ABA", 
+         league != "BAA")
+
+# converting the teams that transferred from other leagues to NBA
+plot2_data <- plot2_data %>% mutate(league = str_remove(df_all$league, "/ABA"))
+plot2_data <- plot2_data %>% mutate(league = str_remove(plot2_data$league, "/BAA"))
+
+ggplot(plot2_data,aes(championships, teams, fill = league)) + 
+  geom_col() + 
+  facet_wrap(~ league) + 
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  theme(text = element_text(size=5), plot.title = element_text(size=15)) 
+  labs(x="Number of Championships", title="Championships by League")
+```  
+
+It looks like the LA Lakers and the BOS Celtics are the two most successful franchises in the NBA. In the WNBA the leaders are the Lynx, the Storm and the Comets (defunct), all having 4 championships a piece. 
+
+# Plot 4: Win/Lose Ratio vs. Championships 
+
+Let's also examine the association between the number of championships and win/lose %, although we might expect it to be positive, there are instances when a team can perform really well in the regular season, but have little success in the playoffs. 
+
+```{r plot 3, warning = FALSE, message = FALSE}
+
+# Plot 4  
+# see is the teams which perform well in general are more likely to win a championship 
+
+ggplot(df_all,aes(championships, `win/lose%`)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  scale_y_continuous(breaks=seq(0, 1, 0.20)) +
+  facet_wrap(~ league) + 
+  labs(y="Win/Lose Ratio", x="Number of Championships", title="Wins vs. Championships")
+
+```  
+
+As expected, in general, the association between the number of championships and win/lose ratio is positive across all the leagues. 
+
+# Plot 5: Playoffs vs. Championships 
+
+Finally, let's take a look at how the association between playoff runs and championships looks like. 
+
+```{r plot 5, warning = FALSE, message = FALSE}
+
+# Plot 5  
+# how many playoffs to be more likely to win a championship 
+ggplot(df_all,aes(playoffs, championships)) + 
+geom_col() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~ league) +
+  scale_y_continuous(breaks=seq(0, 17, 1)) +
+  scale_x_continuous(breaks=seq(0, 80, 10)) +
+  labs(y="Number of Championships", x="Trips to the Playoffs", title="Playoffs vs. Championships")
+```  
+
+Here, once again, the association is positive, suggesting that the more playoffs a team makes, the higher probability of winning a championships it has. 
+
+# Conclusion 
+
+In summary, when looking at the win/lose ratio, it seem like the league has some effect on it. For example based on the earlier, we could observe that it is somewhat harder to be successful in the NBA, than other leagues. 
+Longevity appears to have different effects on win/lose ratio depending on the league. In order to discover the true association, we might need to examine some omitted variables. 
+Finally, it looks like the expected metrics, such as win/lose ratio and number of trips to the playoffs might have positive effect on number of championships. 
